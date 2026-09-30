@@ -39,7 +39,7 @@ Note that this course is **NOT focused on AI methods**.  Instead, we will *focus
 | Sept 21    | Pipeline Parallelism                                   | Fan Lai        |   [Slides](./Slides/L7_pipeline_parallelism.pdf)     | [LlamaRL](https://arxiv.org/abs/2505.24034), [Assignment 1 Released](Homework/hw1/Assignment_1.pdf) |
 | Sept 23    | **No Class** (Meet to refine project ideas)       | Fan Lai        |        |       
 | Sept 28    | Multi-Dimensional Parallelism                          | Fan Lai        | [Slides](./Slides/L8_Multi_Parallelism.pdf)       | [Alpa](https://www.usenix.org/system/files/osdi22-zheng-lianmin.pdf) |
-| Sept 30    | Mixed Precision Training                               | Fan Lai        |        |    Project Proposal Due               |
+| Sept 30    | Mixed Precision Training                               | Fan Lai        |   [Slides](./Slides/L9_mixed_precision_training.pdf)     |    Project Proposal Due               |
 | Oct 5     | Project Proposal Feedback   I                    | Fan Lai        |        |                    |
 | Oct 7     | Project Proposal Feedback   II                    | Fan Lai        |        |                    |
 | Oct 12      | Memory Optimization                                    | Fan Lai        |        | [ZeRO-style Data Parallelism](https://arxiv.org/abs/1910.02054) |

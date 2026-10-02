@@ -196,9 +196,10 @@ def q4_checks(module, config, rank, world):
     runner.q4 = module
     results = {}
     shape = tuple(config['shape'])
-    success = runner.component_checks('all', config['seed'], rank, world, cases=[shape], results=results)
-    if success and not runner.combined_checks(config['seed'], rank, world, shape=shape):
-        results['forward'] = results['backward'] = False
+    with runner.diagnostic_collectives(timeout_seconds=20):
+        success = runner.component_checks('all', config['seed'], rank, world, cases=[shape], results=results)
+        if success and not runner.combined_checks(config['seed'], rank, world, shape=shape):
+            results['forward'] = results['backward'] = False
     return results
 
 

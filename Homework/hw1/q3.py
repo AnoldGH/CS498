@@ -4,21 +4,47 @@
 from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
 import torch
 import torch.distributed as dist
+import torch.nn.functional as F
 
-def reduce_scatter(chunks, tmp, world, rank, left, right):
+def reduce_scatter(chunks, chunk_size, world, rank, left, right):
     #                                                                   #
     #                                                                   #
     # your code here: follow slides instruction: do counter-clockwise iteration
     #                                                                   #
     #                                                                   #
+    transfer_idx = rank  # start with transferring chunks[rank]
+    for _ in range(world):
+        recv_buf = torch.empty(chunk_size)
+        recv_chunk_idx = (transfer_idx - 1) % world
+        r = dist.irecv(recv_buf, src=left)
+        r.wait()
+
+        chunks[recv_chunk_idx] += recv_buf
+
+        r = dist.isend(chunks[transfer_idx], dst=right)
+        r.wait()    # wait for completion
+
+        transfer_idx = (transfer_idx + 1) % world
+
     return
-        
-def all_gather(chunks, tmp, current, world, rank, left, right):
+
+def all_gather(chunks, world, rank, left, right):
     #                                                                   #
     #                                                                   #
     # your code here: follow slides instruction: do counter-clockwise iteration
     #                                                                   #
     #                                                                   #
+    recv_idx = rank
+    for _ in range(world):
+        r = dist.irecv(chunks[recv_idx], src=left)
+        r.wait()    # receive
+
+        send_chunk_idx = (recv_idx + 1) % world
+        r = dist.isend(chunks[send_chunk_idx], dst=right)
+        r.wait()
+
+        recv_idx = (recv_idx - 1) % world
+
     return
 
 def ring_allreduce_(tensor: torch.Tensor, world_size = None, rankid = None):
@@ -40,7 +66,10 @@ def ring_allreduce_(tensor: torch.Tensor, world_size = None, rankid = None):
     #                                                                   #
     #                                                                   #
     #So, fill zeros at the end of flat to generate padded_flat
-    padded_flat = None # modify this line and fill correct value into padded_flat
+    # TODO: likely need to call _unflatten_dense_tensors to unpack input
+
+    pad_size = chunk * 3 - n
+    padded_flat = F.pad(flat, (0, pad_size), mode='constant', value=0)  # modify this line and fill correct value into padded_flat
     chunks = [padded_flat[i*chunk:(i+1)*chunk] for i in range(world)]
 
     #                                                                   #
@@ -51,8 +80,13 @@ def ring_allreduce_(tensor: torch.Tensor, world_size = None, rankid = None):
     #                                                                   #
     #we provide the reduce_scatter and all_gather func prototype for you
     # You may adjust the function signature (input structure) of `reduce_scatter` and `all_gather` if needed.
-    
-    # stitch & unpad  
+    # TODO: call reduce_scatter
+    reduce_scatter(chunks, chunk, world, rank, left, right)
+
+    # TODO: call all_gather
+    all_gather(chunks, world, rank, left, right)
+
+    # stitch & unpad
     flat /= world
     tensor.view(-1).copy_(flat[:n])
     return

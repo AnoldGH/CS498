@@ -16,6 +16,13 @@ def server(params, opt, world):
     # your code here: receive gradients form worker, and add them to agg#
     #                                                                   #
     #                                                                   #
+    recv_buf = torch.empty(len(flat_grad), dtype=torch.long)
+    for i in range(1, world):
+        r = dist.irecv(recv_buf, src=i)
+        r.wait()    # each iteration, receives from one node
+
+        agg += recv_buf # add received parameters to agg
+    # HW: end
 
     synced_grads = _unflatten_dense_tensors(agg, [p.grad for p in params])
     # ---- set averaged grads locally & step ----
@@ -30,6 +37,10 @@ def server(params, opt, world):
     # your code here: send packed 1-D parameter tensor to all workers   #
     #                                                                   #
     #                                                                   #
+    for i in range(1, world):
+        r = dist.isend(flat_param, dst=i)
+        r.wait()
+    # HW: end
 
 def worker(params):
     flat_grad = _flatten_dense_tensors([p.grad for p in params]).contiguous()
@@ -40,16 +51,23 @@ def worker(params):
     # your code here: send packed 1-D gradient to server
     #                                                                   #
     #                                                                   #
+    r = dist.isend(flat_grad, dst=0)
+    r.wait()
+    # HW: end
 
     # ---- receive updated params, write into local model ----
-    
+
     #                                                                   #
     #                                                                   #
     # your code here: please get correct 1-D packed parameter from server
     #           And then unpacked it and store in synced_params
     #                                                                   #
-    synced_params = None #you should  assign correct value for synced_params#
+    recv_buf = torch.emtpy(len(flat_grad), dtype=torch.long)
+    r = dist.irecv(recv_buf, src=0)
+    r.wait()
 
+    synced_params = None    # TODO: unpack recv_buf -> _unflatten_dense_tensors?
+    # HW: end
 
     # ---- syncronize the parameters ----
     for p, s in zip(params, synced_params):
@@ -64,7 +82,7 @@ def PS_grads_(model,world_size=None, rankid=None, opt=None):
     """
     world = world_size
     rank  = rankid
-    
+
     # Fast path: single process
     if world == 1:
         opt.step()

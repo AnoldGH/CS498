@@ -18,6 +18,7 @@ from torch.utils.data import Dataset, DataLoader
 import time
 
 q4 = None  # Selected lazily by Q4 diagnostics or injected by the trusted grader.
+_DIAGNOSTIC_GROUP = None
 
 ###a example of LLM templete for reference###
 ###you don't have to actually use it###
@@ -257,6 +258,26 @@ def unchanged(tensors, snapshots):
         close(tensor, snapshot, exact=True)
 
 
+@contextmanager
+def diagnostic_collectives(timeout_seconds=30):
+    """Keep runner collectives separate from student point-to-point traffic.
+
+    DETAIL debug mode counts P2P operations in the default group's sequence.
+    Rank-0 aggregation has different P2P counts per rank, so later test
+    collectives must use their own group with matching sequence counts.
+    Every rank must enter this context in the same order.
+    """
+    global _DIAGNOSTIC_GROUP
+    previous = _DIAGNOSTIC_GROUP
+    group = dist.new_group(backend='gloo', timeout=timedelta(seconds=timeout_seconds))
+    _DIAGNOSTIC_GROUP = group
+    try:
+        yield
+    finally:
+        _DIAGNOSTIC_GROUP = previous
+        dist.destroy_process_group(group)
+
+
 def check(label, action, rank, world):
     result, error = None, None
     try:
@@ -265,7 +286,7 @@ def check(label, action, rank, world):
         error = f'rank {rank}: {type(exc).__name__}: {exc}'
     status = torch.tensor([error is None], dtype=torch.int32)
     statuses = [torch.empty_like(status) for _ in range(world)]
-    dist.all_gather(statuses, status)  # Runner-only collective is allowed.
+    dist.all_gather(statuses, status, group=_DIAGNOSTIC_GROUP)  # Runner-only group.
     passed = all(item.item() for item in statuses)
     if rank == 0:
         print(f"{'PASS' if passed else 'FAIL'} {label}", flush=True)
@@ -300,7 +321,7 @@ def reference_sync(rank, world):
         assert (passed_rank, passed_world) == (rank, world)
         calls.append(tensor.clone())
         result = tensor.clone()
-        dist.all_reduce(result, op=dist.ReduceOp.SUM)
+        dist.all_reduce(result, op=dist.ReduceOp.SUM, group=_DIAGNOSTIC_GROUP)
         return result
     q4.sum_across_ranks = sync
     try:
@@ -431,14 +452,15 @@ def run_q4_diagnostics(args):
     torch.set_num_threads(1)
     dist.init_process_group('gloo', timeout=timedelta(seconds=30))
     try:
-        rank, world = dist.get_rank(), dist.get_world_size()
-        success = component_checks(args.component, args.seed, rank, world)
-        if args.component == 'all' and success:
-            success = combined_checks(args.seed, rank, world)
-        elif args.component == 'all' and rank == 0:
-            print('SKIP combined forward/backward: finish the component checks first.', flush=True)
-        if rank == 0:
-            print(f"Q4 {'PASSED' if success else 'FAILED'} ({world} processes, {args.component}, seed={args.seed})", flush=True)
+        with diagnostic_collectives():
+            rank, world = dist.get_rank(), dist.get_world_size()
+            success = component_checks(args.component, args.seed, rank, world)
+            if args.component == 'all' and success:
+                success = combined_checks(args.seed, rank, world)
+            elif args.component == 'all' and rank == 0:
+                print('SKIP combined forward/backward: finish the component checks first.', flush=True)
+            if rank == 0:
+                print(f"Q4 {'PASSED' if success else 'FAILED'} ({world} processes, {args.component}, seed={args.seed})", flush=True)
     finally:
         dist.destroy_process_group()
     if not success:

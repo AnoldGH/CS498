@@ -44,18 +44,18 @@ Note that this course is **NOT focused on AI methods**.  Instead, we will *focus
 | Oct 7     | Project Proposal Feedback   II                    | Fan Lai        |        |                    |
 | Oct 12      | Memory Optimization                                    | Fan Lai        |        | [ZeRO-style Data Parallelism](https://arxiv.org/abs/1910.02054) |
 | Oct 14      | Finetuning Techniques                                  | Fan Lai        |        | Assignment 1 Due   |
-| Oct 19     | Guest Lecture                                          |                |        | Assignment 2 Released |
-| Oct 21     | Inference Overview                                     | Fan Lai        |        | [Speculative Decoding](https://arxiv.org/abs/2211.17192) |
-| Oct 26     | Batch Serving Techniques                               | Fan Lai        |        | [DistServe](https://arxiv.org/abs/2401.09670) |
-| Oct 28     | Paged Attention                                        | Fan Lai        |        | [SGLang](https://arxiv.org/abs/2312.07104) |
-| Nov 2      | Adaptive KV                                            | Fan Lai        |        |                    |
-| Nov 4      | Quantization                                           | Fan Lai        |        | Mid-semester Report Due |
-| Nov 9      | MoE Efficiency                                         | Fan Lai        |        | Assignment 2 Due, Assignment 3 Released (for 4-credit students) |
+| Oct 19 | Inference Overview       | Fan Lai | | [Speculative Decoding](https://arxiv.org/abs/2211.17192), Assignment 2 Release |
+| Oct 21 | Batch Serving Techniques | Fan Lai | | [DistServe](https://arxiv.org/abs/2401.09670) |
+| Oct 26 | Paged Attention          | Fan Lai | | [SGLang](https://arxiv.org/abs/2312.07104) |
+| Oct 28 | Adaptive KV              | Fan Lai | | |
+| Nov 2  | Quantization             | Fan Lai | | |
+| Nov 4  | MoE Efficiency           | Fan Lai | | Mid-semester Report Due |
+| Nov 9  | Project Check-in & Feedback  |  Fan Lai       | | Assignment 2 Due, Assignment 3 Released (for 4-credit students) |
 | Nov 11     | Project Check-in & Feedback                                | Fan Lai        |        |                    |
 | Nov 16     | Advanced Topics: RAG Systems                           | Fan Lai        |        | [MoonCake](https://www.usenix.org/conference/fast25/presentation/qin) |
 | Nov 18     | Advanced Topics: Agentic AI                            |                |        | [Murakkab](https://www.usenix.org/system/files/osdi26-chaudhry.pdf) |
 | Nov 21-29  | **Fall Break — No Class**                              |                |        |                    |
-| Nov 30     | Guest Lecture                                          |                |        |                    |
+| Nov 30     | Guest Lecture                                          |  Chen Wang (IBM)              |        |                    |
 | Dec 2      | Final Presentations                                    |                |        | Assignment 3 Due   |
 | Dec 7      | Final Presentations                                    |                |        |                    |
 | Dec 9      | Final Presentations                                    |                |        |                    |

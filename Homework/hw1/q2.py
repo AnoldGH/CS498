@@ -16,12 +16,13 @@ def server(params, opt, world):
     # your code here: receive gradients form worker, and add them to agg#
     #                                                                   #
     #                                                                   #
-    recv_buf = torch.empty(len(flat_grad), dtype=torch.long)
-    for i in range(1, world):
-        r = dist.irecv(recv_buf, src=i)
-        r.wait()    # each iteration, receives from one node
+    recv_bufs = [torch.empty_like(flat_grad) for _ in range(1, world)]
+    reqs = [dist.irecv(buf, src=i) for i, buf in zip(range(1, world), recv_bufs)]
+    for r, buf in zip(reqs, recv_bufs):
+        r.wait()        # wait before reading received data
+        agg += buf      # add received gradients to agg
 
-        agg += recv_buf # add received parameters to agg
+    agg /= world        # elementwise average
     # HW: end
 
     synced_grads = _unflatten_dense_tensors(agg, [p.grad for p in params])
@@ -37,8 +38,8 @@ def server(params, opt, world):
     # your code here: send packed 1-D parameter tensor to all workers   #
     #                                                                   #
     #                                                                   #
-    for i in range(1, world):
-        r = dist.isend(flat_param, dst=i)
+    reqs = [dist.isend(flat_param, dst=i) for i in range(1, world)]
+    for r in reqs:
         r.wait()
     # HW: end
 
@@ -62,11 +63,12 @@ def worker(params):
     # your code here: please get correct 1-D packed parameter from server
     #           And then unpacked it and store in synced_params
     #                                                                   #
-    recv_buf = torch.emtpy(len(flat_grad), dtype=torch.long)
+    recv_buf = torch.empty_like(flat_grad)
     r = dist.irecv(recv_buf, src=0)
-    r.wait()
+    r.wait()    # wait before reading received data
 
-    synced_params = None    # TODO: unpack recv_buf -> _unflatten_dense_tensors?
+    # unpack 1-D buffer back
+    synced_params = _unflatten_dense_tensors(recv_buf, params)
     # HW: end
 
     # ---- syncronize the parameters ----

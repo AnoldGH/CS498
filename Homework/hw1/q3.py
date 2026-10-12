@@ -6,26 +6,26 @@ import torch
 import torch.distributed as dist
 import torch.nn.functional as F
 
-def reduce_scatter(chunks, chunk_size, world, rank, left, right):
+def reduce_scatter(chunks, world, rank, left, right):
     #                                                                   #
     #                                                                   #
     # your code here: follow slides instruction: do counter-clockwise iteration
     #                                                                   #
     #                                                                   #
-    transfer_idx = rank  # start with transferring chunks[rank]
-    for _ in range(world):
-        recv_buf = torch.empty(chunk_size)
-        recv_chunk_idx = (transfer_idx - 1) % world
-        r = dist.irecv(recv_buf, src=left)
+    send_idx = rank
+    for _ in range(world - 1):
+        recv_idx = (send_idx - 1) % world
+        recv_buf = torch.empty_like(chunks[recv_idx])
+
+        s = dist.isend(chunks[send_idx], dst=right) # send to right
+        r = dist.irecv(recv_buf, src=left)          # recv from left
+        s.wait()
         r.wait()
 
-        chunks[recv_chunk_idx] += recv_buf
+        chunks[recv_idx] += recv_buf
+        send_idx = recv_idx  # counter-clockwise
 
-        r = dist.isend(chunks[transfer_idx], dst=right)
-        r.wait()    # wait for completion
-
-        transfer_idx = (transfer_idx + 1) % world
-
+    # rank r owns the fully reduced chunk (r + 1) % world
     return
 
 def all_gather(chunks, world, rank, left, right):
@@ -34,16 +34,16 @@ def all_gather(chunks, world, rank, left, right):
     # your code here: follow slides instruction: do counter-clockwise iteration
     #                                                                   #
     #                                                                   #
-    recv_idx = rank
-    for _ in range(world):
-        r = dist.irecv(chunks[recv_idx], src=left)
-        r.wait()    # receive
+    send_idx = (rank + 1) % world
+    for _ in range(world - 1):
+        recv_idx = (send_idx - 1) % world
 
-        send_chunk_idx = (recv_idx + 1) % world
-        r = dist.isend(chunks[send_chunk_idx], dst=right)
+        s = dist.isend(chunks[send_idx], dst=right)
+        r = dist.irecv(chunks[recv_idx], src=left)
+        s.wait()
         r.wait()
 
-        recv_idx = (recv_idx - 1) % world
+        send_idx = recv_idx
 
     return
 
@@ -66,10 +66,8 @@ def ring_allreduce_(tensor: torch.Tensor, world_size = None, rankid = None):
     #                                                                   #
     #                                                                   #
     #So, fill zeros at the end of flat to generate padded_flat
-    # TODO: likely need to call _unflatten_dense_tensors to unpack input
-
-    pad_size = chunk * 3 - n
-    padded_flat = F.pad(flat, (0, pad_size), mode='constant', value=0)  # modify this line and fill correct value into padded_flat
+    pad_size = chunk * world - n
+    padded_flat = F.pad(flat, (0, pad_size), mode='constant', value=0)
     chunks = [padded_flat[i*chunk:(i+1)*chunk] for i in range(world)]
 
     #                                                                   #
@@ -80,13 +78,10 @@ def ring_allreduce_(tensor: torch.Tensor, world_size = None, rankid = None):
     #                                                                   #
     #we provide the reduce_scatter and all_gather func prototype for you
     # You may adjust the function signature (input structure) of `reduce_scatter` and `all_gather` if needed.
-    # TODO: call reduce_scatter
-    reduce_scatter(chunks, chunk, world, rank, left, right)
-
-    # TODO: call all_gather
+    reduce_scatter(chunks, world, rank, left, right)
     all_gather(chunks, world, rank, left, right)
 
-    # stitch & unpad
-    flat /= world
-    tensor.view(-1).copy_(flat[:n])
+    # stitch & unpad: the reduced data lives in padded_flat, not flat
+    padded_flat /= world
+    tensor.view(-1).copy_(padded_flat[:n])
     return

@@ -1,0 +1,30 @@
+Q1: 768 / 12 = 64
+
+Q2: O(s)
+
+Q3:
+    (a) 16 * 1024 * 1024 = 16,777,216
+    (b) The memory increases by four times.
+
+Q4:
+    (a) MHA: 2 * 128 * 128 * 61 = 32,768 * 61 = 1,998,848
+    (b) MQA: 2 * 128 * 61 = 15,616
+
+Q5:
+    input embedding: 65536 * 8192 = 536,870,912
+    per-layer qkv and attention: 4 * 8192 * 32 * 256 = 268,435,456
+    per-layer MLP:
+        let the two matrices be W1 and W2:
+            W1 = 4 * 8192 * 8192 = 268,435,456
+            W2 = W1 = 268,435,456
+    per-layer total = qkv + attention + MLP = 3 * 268,435,456 = 805,306,368
+    for 64 layers: 64 * 805,306,368 = 51,539,607,552
+
+    therefore, total number of parameters = 51,539,607,552 + 536,870,912 = 52,076,478,464;
+    total memory consumption = 52,076,478,464 * 2 bytes = 97 GB.
+
+Q6:
+    (a) both W1 and W2 shards are 4096 x 4096
+    (b) before. GeLU is non-linear, and Sum_i GeLU(shard_i) != GeLU(Sum_i shard_i). To reproduce the original MLP computation, shard results must be reduced before the activation function.
+    (c) the shape is 128 x 4096 because W1 is sharded to have shape 4096 x 4096. This computation doesn't require communication because GeLU just modify elementwise values.
+    (d) an all-reduce operation with Sum operator. It is needed so that every GPU get the full MLP output.

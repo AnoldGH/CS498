@@ -7,6 +7,7 @@ import torch
 import torch.distributed as dist
 import torch.nn.functional as F
 
+AGG_TAG, DIST_TAG = 0, 1  # separate aggregation and distribution messages
 
 def gelu_derivative(z):
     ###provided helper: derivative of exact GeLU###
@@ -25,7 +26,14 @@ def shard_weights(w1, w2, rank, world_size):
     # your code here: find this rank's feature range, including remainder #
     #                columns, and copy the matching w1/w2 shards          #
     #                                                                   #
-    raise NotImplementedError("Implement shard_weights")
+    total = w1.shape[1]
+    q, m = divmod(total, world_size)
+    start = rank * q + min(rank, m)
+    end = start + q + (1 if rank < m else 0)
+
+    w1_local = w1[:, start:end].clone(memory_format=torch.contiguous_format)    # contiguous format, [1]
+    w2_local = w2[start:end].clone(memory_format=torch.contiguous_format)       # [0]
+    return w1_local, w2_local
 
 
 @torch.no_grad()
@@ -39,19 +47,39 @@ def sum_across_ranks(tensor, rank, world_size):
     #                                                                   #
     # your code here: handle the single-rank case                        #
     #                                                                   #
+    if world_size == 1: # single-rank
+        return tensor.clone()
 
     # ---- rank 0: aggregate contributions, then send the sum ----
     #                                                                   #
     # your code here: include rank 0's input and receive from workers;    #
     #                send the completed sum to every worker              #
     #                                                                   #
+    if rank == 0:
+        result = tensor.clone(memory_format=torch.contiguous_format)
+        recv_bufs = [torch.empty_like(result) for _ in range(1, world_size)]
+        reqs = [dist.irecv(buf, src=src, tag=AGG_TAG) for src, buf in zip(range(1, world_size), recv_bufs)]
+        for req, buf in zip(reqs, recv_bufs):
+            req.wait()
+            result += buf
+
+        reqs = [dist.isend(result, dst=dst, tag=DIST_TAG) for dst in range(1, world_size)]
+        for req in reqs:
+            req.wait()
+        return result
 
     # ---- other ranks: send the local contribution, receive the sum ----
     #                                                                   #
     # your code here: send to rank 0 and receive the completed sum        #
     #                Wait before reading/reusing buffers or returning.   #
     #                                                                   #
-    raise NotImplementedError("Implement sum_across_ranks")
+    send_buf = tensor.contiguous()
+    result = torch.empty_like(send_buf)
+    s = dist.isend(send_buf, dst=0, tag=AGG_TAG)
+    r = dist.irecv(result, src=0, tag=DIST_TAG)
+    s.wait()
+    r.wait()
+    return result
 
 
 @torch.no_grad()
@@ -66,12 +94,16 @@ def mlp_forward(x, w1_local, w2_local, rank, world_size):
     #                                                                   #
     # your code here: compute z, a, and the local partial output          #
     #                                                                   #
+    z = x @ w1_local
+    a = F.gelu(z)
+    y_local = a @ w2_local
 
     # ---- combine outputs and save values for backward ----
     #                                                                   #
     # your code here: call sum_across_ranks and return output with cache  #
     #                                                                   #
-    raise NotImplementedError("Implement mlp_forward")
+    y = sum_across_ranks(y_local, rank, world_size)
+    return y, (x, z, a, w1_local, w2_local)
 
 
 @torch.no_grad()
@@ -87,10 +119,17 @@ def mlp_backward(grad_output, cache, rank, world_size):
     # your code here: compute grad_w2, grad_z, and grad_w1 manually        #
     #                Use the supplied gelu_derivative helper.            #
     #                                                                   #
+    x, z, a, w1_local, w2_local = cache
+    grad_w2 = a.T @ grad_output
+    grad_a = grad_output @ w2_local.T
+    grad_z = grad_a * gelu_derivative(z)
+    grad_w1 = x.T @ grad_z
 
     # ---- combine input-gradient contributions ----
     #                                                                   #
     # your code here: compute local grad_x, sum it across ranks, and      #
     #                return grad_x with the two local weight gradients   #
     #                                                                   #
-    raise NotImplementedError("Implement mlp_backward")
+    grad_x_local = grad_z @ w1_local.T
+    grad_x = sum_across_ranks(grad_x_local, rank, world_size)
+    return grad_x, grad_w1, grad_w2
